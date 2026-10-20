@@ -15,8 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/shelf-compact.png" width="170" alt="A compact Stash shelf holding five files">
-  <img src="docs/screenshots/shelf.png" width="280" alt="The same shelf expanded">
+  <img src="docs/screenshots/in-use.png" width="560" alt="A Stash shelf holding three files">
 </p>
 
 ## What it does
@@ -38,8 +37,8 @@ go find where they need to go, then drag them out again — all at once or one b
 - Settings shows a live preview that follows your settings.
 
 <p align="center">
-  <img src="docs/screenshots/settings-shelf.png" width="300" alt="Shelf settings">
-  <img src="docs/screenshots/settings-general.png" width="300" alt="General settings">
+  <img src="docs/screenshots/settings-shelf.png" width="360" alt="Shelf settings">
+  <img src="docs/screenshots/settings-general.png" width="360" alt="General settings">
 </p>
 
 ## Install
