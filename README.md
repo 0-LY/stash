@@ -43,11 +43,15 @@ go find where they need to go, then drag them out again — all at once or one b
 
 ## Install
 
-1. [Download Stash.dmg](https://github.com/0-LY/stash/releases/latest/download/Stash.dmg) and open it.
+> [!IMPORTANT]
+> **First install only.** Stash isn't notarized by Apple, so macOS blocks it the first time.
+> You may see this twice — once for the `.dmg`, once for the app. Each time: click **Done**, open
+> **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Stash",
+> then open it again. You do this once per app; updates install and open normally.
+
+1. [Download Stash.dmg](https://github.com/0-LY/stash/releases/latest/download/Stash.dmg) and open it. If macOS blocks it, use **Open Anyway** as above.
 2. Drag **Stash** onto the **Applications** folder in the window that opens.
-3. Open it. Stash isn't notarized by Apple, so the first time macOS says it can't check it:
-   click **Done**, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
-   You only do this once — updates open normally.
+3. Open Stash from Applications. If macOS blocks it, use **Open Anyway** again.
 
 Stash needs no special permissions. Requirements: macOS 26 or later on Apple silicon.
 
