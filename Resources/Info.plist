@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>BUNDLE_ID</string>
+    <key>CFBundleName</key><string>APP_NAME</string>
+    <key>CFBundleDisplayName</key><string>APP_NAME</string>
+    <key>CFBundleExecutable</key><string>EXECUTABLE</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSHumanReadableCopyright</key><string>COPYRIGHT</string>
+    <key>SUFeedURL</key><string>FEED_URL</string>
+    <key>SUPublicEDKey</key><string>SPARKLE_PUBLIC_KEY</string>
+    <key>AppConfigDirName</key><string>CONFIG_DIR_NAME</string>
+    <key>AppRepoURL</key><string>REPO_URL</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAllowsAutomaticUpdates</key><true/>
+    <key>SUAutomaticallyUpdate</key><true/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>Any item</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>None</string>
+            <key>LSItemContentTypes</key>
+            <array><string>public.item</string></array>
+        </dict>
+    </array>
+</dict>
+</plist>
