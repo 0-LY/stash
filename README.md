@@ -23,7 +23,7 @@
 Start dragging files, shake the pointer, and a small shelf appears right there. Drop the files on it,
 go find where they need to go, then drag them out again — all at once or one by one.
 
-- **Open the shelf:** shake while dragging files — from Finder, the Dock's stacks or any app — or press the hotkey (⌃⌥D by default) for an empty shelf at the pointer. Dragging a browser tab or a link never opens a shelf, and neither does moving a shelf itself.
+- **Open the shelf:** shake while dragging files — from Finder, the Dock's stacks or any app — or press the hotkey (⌃⌥D by default) for an empty shelf at the pointer. Dragging a browser tab or a link never opens a shelf, and neither does moving a shelf itself. A shelf you open by shaking closes again if you don't drop anything on it; turn on **Keep empty shelves open** in Settings to keep it.
 - **Small by default:** a shelf is a compact pile of what you dropped, with a count in the bottom-left corner. Drag the pile to take everything, or double-click it (or click ⤢) to expand. The shelf grows from its center and shrinks back; move it by the line at the top.
 - **Pick what you need:** the expanded shelf shows every item. Click to select, ⌘-click to add or remove, Shift-click for a range, ⌘A for all, Esc to clear. Share, Copy, Show in Finder and Remove work on the selection, or on everything when nothing is selected. Dragging a selected item takes the whole selection. Drag the count at the bottom left to take the selection, or everything, out at once.
 - **Preview:** press Space (or click the eye) for Quick Look on the selection — or on every file, newest first, when nothing is selected. Arrow keys step through files, Esc closes. Right-click a file for Quick Look, Open, Show in Finder, Copy and Remove.

@@ -1322,6 +1322,7 @@ struct ExpandedShelf: View {
 final class Shelf {
     let model = ShelfModel()
     var autoClose: () -> Bool = { true }
+    var openedByShake = false
     var onClosed: (Shelf) -> Void = { _ in }
     private lazy var panel: ShelfPanel = makePanel()
     private var resizer: AnyCancellable?
@@ -1597,6 +1598,8 @@ final class ShelfManager {
     var autoClose: () -> Bool = { true }
     var startExpanded: () -> Bool = { false }
     var startLocked: () -> Bool = { false }
+    var keepEmpty: () -> Bool = { false }
+    static let unusedGrace: TimeInterval = 0.5
     private(set) var shelves: [Shelf] = []
 
     var isAnyVisible: Bool { !shelves.isEmpty }
@@ -1667,7 +1670,7 @@ final class ShelfManager {
             empty.show(origin: origin)
             moveToFront(empty)
         } else if shelves.count < Self.limit {
-            _ = open(at: point, spread: false)
+            open(at: point, spread: false).openedByShake = true
         } else if let nearest = shelves.min(by: { distance($0, point) < distance($1, point) }) {
             moveToFront(nearest)
         }
@@ -1683,6 +1686,24 @@ final class ShelfManager {
             _ = open(at: point, spread: true)
         } else if let newest = shelves.last {
             moveToFront(newest)
+        }
+    }
+
+    nonisolated static func closesUnused(openedByShake: Bool, isEmpty: Bool, keepEmpty: Bool) -> Bool {
+        openedByShake && isEmpty && !keepEmpty
+    }
+
+    func shakeDragEnded() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.unusedGrace) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let keep = self.keepEmpty()
+                for shelf in self.shelves {
+                    let close = Self.closesUnused(openedByShake: shelf.openedByShake, isEmpty: shelf.isEmpty, keepEmpty: keep)
+                    shelf.openedByShake = false
+                    if close { shelf.close() }
+                }
+            }
         }
     }
 

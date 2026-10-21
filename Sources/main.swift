@@ -89,8 +89,10 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
         shelves.autoClose = { Config.current.autoClose }
         shelves.startExpanded = { Config.current.openExpanded }
         shelves.startLocked = { Config.current.startLocked }
+        shelves.keepEmpty = { Config.current.keepEmpty }
         HotKey.shared.onPress = { [weak self] in self?.shelves.newShelf() }
         shake.onShake = { [weak self] point in self?.shelves.shake(at: point) }
+        shake.onRelease = { [weak self] in self?.shelves.shakeDragEnded() }
         shake.ownRects = { [weak self] in
             let others = NSApp.windows.filter { $0.isVisible && !($0 is ShelfPanel) }.map(\.frame)
             return (self?.shelves.cardFrames ?? []) + others

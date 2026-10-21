@@ -26,7 +26,7 @@ enum PreviewCue: Equatable {
 }
 
 enum PreviewStep: Equatable {
-    case cue, appear, drop, expand, collapse, dragOut, close, end
+    case cue, appear, drop, expand, collapse, dragOut, close, end, emptyAppear, emptyClose, refill
 }
 
 struct PreviewPlan: Equatable {
@@ -40,6 +40,7 @@ struct PreviewPlan: Equatable {
     var locked: Bool
     var closesAfterDrag: Bool
     var removesOnDrag: Bool
+    var demoUnused: Bool
     var reduceMotion: Bool
     var steps: [Timed]
 
@@ -63,7 +64,16 @@ struct PreviewPlan: Equatable {
             t += gap
             steps.append(Timed(time: (t * 10).rounded() / 10, step: step))
         }
-        at(.cue, after: 0)
+        let demoUnused = cfg.shake && !cfg.keepEmpty
+        if demoUnused {
+            at(.cue, after: 0)
+            at(.emptyAppear, after: 1.1)
+            at(.emptyClose, after: 1.0)
+            at(.refill, after: 0.4)
+            at(.cue, after: 0.1)
+        } else {
+            at(.cue, after: 0)
+        }
         at(.appear, after: 1.4)
         at(.drop, after: 1.2)
         if !cfg.openExpanded {
@@ -75,7 +85,8 @@ struct PreviewPlan: Equatable {
         at(.close, after: closes ? 0.9 : 1.5)
         at(.end, after: 1.1)
         return PreviewPlan(cue: cue, expanded: cfg.openExpanded, locked: cfg.startLocked,
-                           closesAfterDrag: closes, removesOnDrag: drag.remove, reduceMotion: reduceMotion, steps: steps)
+                           closesAfterDrag: closes, removesOnDrag: drag.remove, demoUnused: demoUnused,
+                           reduceMotion: reduceMotion, steps: steps)
     }
 }
 
@@ -126,8 +137,7 @@ final class ShelfPreviewDriver: ObservableObject {
             model.items.removeAll()
             model.expanded = plan.expanded
             model.locked = plan.locked
-            model.addPlaceholder("Report.pdf", image: Self.pdfIcon, preview: false)
-            model.addPlaceholder("Project", image: NSWorkspace.shared.icon(for: .folder), preview: false)
+            if !plan.demoUnused { fill() }
         }
         for timed in plan.steps {
             DispatchQueue.main.asyncAfter(deadline: .now() + timed.time) { [weak self] in
@@ -168,7 +178,21 @@ final class ShelfPreviewDriver: ObservableObject {
             model.shown = false
         case .end:
             cycle()
+        case .emptyAppear:
+            withAnimation(.easeIn(duration: 0.15)) { cueVisible = false }
+            model.shown = true
+        case .emptyClose:
+            model.shown = false
+        case .refill:
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { fill() }
         }
+    }
+
+    private func fill() {
+        model.addPlaceholder("Report.pdf", image: Self.pdfIcon, preview: false)
+        model.addPlaceholder("Project", image: NSWorkspace.shared.icon(for: .folder), preview: false)
     }
 
     static let pdfIcon = NSWorkspace.shared.icon(for: .pdf)
@@ -356,13 +380,14 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .disabled(!m.cfg.shake)
+                Toggle("Keep empty shelves open", isOn: $m.cfg.keepEmpty)
+                    .help("Off: a shelf opened by shaking closes again if you don't drop anything on it.")
+                    .disabled(!m.cfg.shake)
                 Toggle("Close when emptied", isOn: $m.cfg.autoClose)
                     .help("Close the shelf once every file has been dragged out.")
                 Toggle("Open shelves expanded", isOn: $m.cfg.openExpanded)
-                Toggle(isOn: $m.cfg.startLocked) {
-                    Text("New shelves start locked")
-                    Text("Locked shelves keep their files after you drag them out.")
-                }
+                Toggle("New shelves start locked", isOn: $m.cfg.startLocked)
+                    .help("Locked shelves keep their files after you drag them out.")
             } footer: {
                 Text("Files stay put. Dropped images, links and text are kept privately until closed.")
                     .font(.caption).foregroundStyle(.secondary)

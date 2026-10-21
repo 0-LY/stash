@@ -7,6 +7,7 @@ struct Config: Codable, Equatable {
     var autoClose = true
     var openExpanded = false
     var startLocked = false
+    var keepEmpty = false
     var showMenuBarIcon = true
     var launchAtLogin = false
 
@@ -21,6 +22,7 @@ struct Config: Codable, Equatable {
         autoClose = (try? c.decodeIfPresent(Bool.self, forKey: .autoClose)) ?? d.autoClose
         openExpanded = (try? c.decodeIfPresent(Bool.self, forKey: .openExpanded)) ?? d.openExpanded
         startLocked = (try? c.decodeIfPresent(Bool.self, forKey: .startLocked)) ?? d.startLocked
+        keepEmpty = (try? c.decodeIfPresent(Bool.self, forKey: .keepEmpty)) ?? d.keepEmpty
         showMenuBarIcon = (try? c.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon)) ?? d.showMenuBarIcon
         launchAtLogin = (try? c.decodeIfPresent(Bool.self, forKey: .launchAtLogin)) ?? d.launchAtLogin
     }

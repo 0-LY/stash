@@ -73,8 +73,18 @@ struct ShakeDetector {
     }
 }
 
+struct DockWindow: Equatable {
+    var owner: String
+    var layer: Int
+    var bounds: CGRect
+    var onScreen: Bool
+}
+
+enum PollRate: Equatable { case off, slow, fast }
+
 final class DragShakeMonitor {
     var onShake: ((NSPoint) -> Void)?
+    var onRelease: (() -> Void)?
     var sensitivity: Sensitivity = .medium
     var enabled = true
     var ownRects: () -> [NSRect] = { [] }
@@ -86,15 +96,24 @@ final class DragShakeMonitor {
     private var started = Date()
     private var downPoint = NSPoint.zero
     private var startedOnDock = false
+    private var sawDragEvents = false
+    private var fired = false
     private var watcher: Timer?
+    private var watcherRate: PollRate = .off
     private var wasDown = false
     private var moveMonitor: Any?
-    private var lastNearDock: Date?
+    private var lastStrip: Date?
+    private var lastPopup: Date?
+    private var lastPopupCheck = Date.distantPast
 
-    static let dockLinger: TimeInterval = 15
+    static let dockLinger: TimeInterval = 120
+    static let fastGrace: TimeInterval = 2
+    static let popupCheckInterval: TimeInterval = 0.25
     static let edgeBand: CGFloat = 6
+    static let hiddenTravel: CGFloat = 20
 
     var isPolling: Bool { watcher != nil }
+    var rate: PollRate { watcherRate }
 
     func start() {
         guard downMonitor == nil else { return }
@@ -102,8 +121,10 @@ final class DragShakeMonitor {
             guard let self, Self.shouldStart(fromMonitor: true, buttonDown: true, wasDown: false, tracking: self.timer != nil) else { return }
             self.mouseDown()
         }
-        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
-            self?.pointerMoved()
+        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+            guard let self else { return }
+            if event.type == .leftMouseDragged, self.timer != nil { self.sawDragEvents = true }
+            self.pointerMoved()
         }
         pointerMoved()
     }
@@ -124,34 +145,111 @@ final class DragShakeMonitor {
     }
 
     static func shouldPoll(enabled: Bool, nearDock: Bool, lastNearDock: Date?, buttonDown: Bool, now: Date = Date()) -> Bool {
-        guard enabled else { return false }
-        if nearDock || buttonDown { return true }
-        guard let lastNearDock else { return false }
-        return now.timeIntervalSince(lastNearDock) < dockLinger
+        pollRate(enabled: enabled, inStrip: nearDock, popupOpen: false, buttonDown: buttonDown,
+                 lastStrip: lastNearDock, lastPopup: nil, now: now) != .off
+    }
+
+    static func pollRate(enabled: Bool, inStrip: Bool, popupOpen: Bool, buttonDown: Bool,
+                         lastStrip: Date?, lastPopup: Date?, now: Date = Date()) -> PollRate {
+        guard enabled else { return .off }
+        if inStrip || popupOpen || buttonDown { return .fast }
+        let recent = [lastStrip, lastPopup].compactMap { $0 }.map { now.timeIntervalSince($0) }.min()
+        guard let recent else { return .off }
+        if recent < fastGrace { return .fast }
+        return recent < dockLinger ? .slow : .off
+    }
+
+    static func isFullScreen(_ bounds: CGRect, screens: [CGRect]) -> Bool {
+        screens.contains { s in bounds.width >= s.width - 1 && bounds.height >= s.height - 1 }
+    }
+
+    static func isDockPopup(_ w: DockWindow, screens: [CGRect], strips: [CGRect]) -> Bool {
+        guard w.owner == "Dock", w.layer > 0, w.onScreen, !w.bounds.isEmpty else { return false }
+        if isFullScreen(w.bounds, screens: screens) { return false }
+        let isBar = strips.contains { strip in strip.insetBy(dx: -2, dy: -2).contains(w.bounds) }
+        return !isBar
+    }
+
+    static func dockPopupOpen(_ windows: [DockWindow], screens: [CGRect], strips: [CGRect]) -> Bool {
+        windows.contains { isDockPopup($0, screens: screens, strips: strips) }
+    }
+
+    static func pressOnDockPopup(_ point: CGPoint, windows: [DockWindow], screens: [CGRect], strips: [CGRect]) -> Bool {
+        windows.contains { isDockPopup($0, screens: screens, strips: strips) && $0.bounds.contains(point) }
+    }
+
+    static func countsAsContent(pasteboardHasFile: Bool, startedOnDock: Bool, travel: CGFloat) -> Bool {
+        pasteboardHasFile || (startedOnDock && travel >= 20)
+    }
+
+    static func countsAsContent(pasteboardHasFile: Bool, startedOnDock: Bool, dockSession: Bool,
+                                hiddenDrag: Bool, travel: CGFloat) -> Bool {
+        if pasteboardHasFile { return true }
+        guard travel >= hiddenTravel else { return false }
+        return startedOnDock || (dockSession && hiddenDrag)
     }
 
     private static var screenGeometry: [(frame: NSRect, visible: NSRect)] {
         NSScreen.screens.map { ($0.frame, $0.visibleFrame) }
     }
 
+    private static var cgScreens: [CGRect] {
+        guard let h = NSScreen.screens.first?.frame.height else { return [] }
+        return NSScreen.screens.map { CGRect(x: $0.frame.minX, y: h - $0.frame.maxY, width: $0.frame.width, height: $0.frame.height) }
+    }
+
+    private static var cgStrips: [CGRect] {
+        guard let h = NSScreen.screens.first?.frame.height else { return [] }
+        return screenGeometry.flatMap { dockStrips(frame: $0.frame, visible: $0.visible) }
+            .map { CGRect(x: $0.minX, y: h - $0.maxY, width: $0.width, height: $0.height) }
+    }
+
+    static func dockWindows() -> [DockWindow] {
+        guard let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return list.compactMap { w in
+            guard (w[kCGWindowOwnerName as String] as? String) == "Dock",
+                  let dict = w[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: dict) else { return nil }
+            return DockWindow(owner: "Dock", layer: w[kCGWindowLayer as String] as? Int ?? 0, bounds: bounds,
+                              onScreen: (w[kCGWindowIsOnscreen as String] as? Bool) ?? true)
+        }
+    }
+
     private var dockSessionActive: Bool {
-        guard let lastNearDock else { return false }
-        return Date().timeIntervalSince(lastNearDock) < Self.dockLinger
+        Self.pollRate(enabled: true, inStrip: false, popupOpen: false, buttonDown: false,
+                      lastStrip: lastStrip, lastPopup: lastPopup) != .off
+    }
+
+    private func checkPopup(force: Bool = false) -> Bool {
+        let now = Date()
+        guard force || now.timeIntervalSince(lastPopupCheck) >= Self.popupCheckInterval else {
+            return lastPopup.map { now.timeIntervalSince($0) < Self.popupCheckInterval * 2 } ?? false
+        }
+        lastPopupCheck = now
+        let open = Self.dockPopupOpen(Self.dockWindows(), screens: Self.cgScreens, strips: Self.cgStrips)
+        if open { lastPopup = now }
+        return open
     }
 
     private func pointerMoved() {
         guard enabled else { stopPolling(); return }
-        let near = Self.inDockArea(NSEvent.mouseLocation, screens: Self.screenGeometry)
-        if near { lastNearDock = Date() }
-        if Self.shouldPoll(enabled: enabled, nearDock: near, lastNearDock: lastNearDock, buttonDown: wasDown) {
-            startPolling()
-        }
+        let strip = Self.inDockArea(NSEvent.mouseLocation, screens: Self.screenGeometry)
+        if strip { lastStrip = Date() }
+        let popup = (!strip && dockSessionActive) ? checkPopup() : false
+        updatePolling(strip: strip, popup: popup, buttonDown: wasDown || timer != nil)
     }
 
-    private func startPolling() {
-        guard watcher == nil else { return }
-        let w = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in self?.watch() }
-        w.tolerance = 0.05
+    private func updatePolling(strip: Bool, popup: Bool, buttonDown: Bool) {
+        let want = Self.pollRate(enabled: enabled, inStrip: strip, popupOpen: popup, buttonDown: buttonDown,
+                                 lastStrip: lastStrip, lastPopup: lastPopup)
+        guard want != watcherRate else { return }
+        watcher?.invalidate()
+        watcher = nil
+        watcherRate = want
+        guard want != .off else { wasDown = false; return }
+        let interval = want == .fast ? 1.0 / 20.0 : 1.0 / 4.0
+        let w = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.watch() }
+        w.tolerance = want == .fast ? 0.05 : 0.1
         RunLoop.main.add(w, forMode: .common)
         watcher = w
     }
@@ -159,6 +257,7 @@ final class DragShakeMonitor {
     private func stopPolling() {
         watcher?.invalidate()
         watcher = nil
+        watcherRate = .off
         wasDown = false
     }
 
@@ -174,16 +273,16 @@ final class DragShakeMonitor {
     private func watch() {
         guard enabled else { stopPolling(); return }
         let isDown = CGEventSource.buttonState(.hidSystemState, button: .left)
-        if Self.inDockArea(NSEvent.mouseLocation, screens: Self.screenGeometry) { lastNearDock = Date() }
+        let strip = Self.inDockArea(NSEvent.mouseLocation, screens: Self.screenGeometry)
+        if strip { lastStrip = Date() }
         if Self.shouldStart(fromMonitor: false, buttonDown: isDown, wasDown: wasDown, tracking: timer != nil) {
             wasDown = isDown
             mouseDown()
             return
         }
         wasDown = isDown
-        if !Self.shouldPoll(enabled: enabled, nearDock: false, lastNearDock: lastNearDock, buttonDown: isDown || timer != nil) {
-            stopPolling()
-        }
+        let popup = (!strip && !isDown && dockSessionActive) ? checkPopup() : false
+        updatePolling(strip: strip, popup: popup, buttonDown: isDown || timer != nil)
     }
 
     func stop() {
@@ -202,10 +301,20 @@ final class DragShakeMonitor {
         guard !Self.startsInOwnWindow(point, rects: ownRects()) else { return }
         dragCount = NSPasteboard(name: .drag).changeCount
         downPoint = point
+        sawDragEvents = false
+        fired = false
         let strip = Self.inDockArea(point, screens: Self.screenGeometry)
-        if strip { lastNearDock = Date() }
-        startedOnDock = Self.dockLookupPlan(inStrip: strip, dockSession: dockSessionActive) == .strip
-            || (Self.dockLookupPlan(inStrip: strip, dockSession: dockSessionActive) == .lookup && Self.isDockWindow(at: point))
+        if strip { lastStrip = Date() }
+        switch Self.dockLookupPlan(inStrip: strip, dockSession: dockSessionActive) {
+        case .strip:
+            startedOnDock = true
+        case .lookup:
+            let h = NSScreen.screens.first?.frame.height ?? 0
+            startedOnDock = Self.pressOnDockPopup(CGPoint(x: point.x, y: h - point.y), windows: Self.dockWindows(),
+                                                  screens: Self.cgScreens, strips: Self.cgStrips)
+        case .skip:
+            startedOnDock = false
+        }
         detector = ShakeDetector(sensitivity: sensitivity)
         started = Date()
         timer?.invalidate()
@@ -213,21 +322,29 @@ final class DragShakeMonitor {
         t.tolerance = 0.005
         RunLoop.main.add(t, forMode: .common)
         timer = t
+        updatePolling(strip: strip, popup: false, buttonDown: true)
     }
 
     private func tick() {
         guard CGEventSource.buttonState(.hidSystemState, button: .left) else {
             timer?.invalidate()
             timer = nil
+            if fired {
+                fired = false
+                onRelease?()
+            }
+            pointerMoved()
             return
         }
+        guard !fired else { return }
         let p = NSEvent.mouseLocation
         let travel = hypot(p.x - downPoint.x, p.y - downPoint.y)
-        guard Self.countsAsContent(pasteboardHasFile: isContentDrag(since: dragCount),
-                                   startedOnDock: startedOnDock, travel: travel) else { return }
+        let pbFile = isContentDrag(since: dragCount)
+        let hidden = !sawDragEvents && NSPasteboard(name: .drag).changeCount == dragCount
+        guard Self.countsAsContent(pasteboardHasFile: pbFile, startedOnDock: startedOnDock,
+                                   dockSession: dockSessionActive, hiddenDrag: hidden, travel: travel) else { return }
         if detector.feed(x: p.x, time: Date().timeIntervalSince(started)) {
-            timer?.invalidate()
-            timer = nil
+            fired = true
             onShake?(p)
         }
     }
@@ -241,10 +358,6 @@ final class DragShakeMonitor {
 
     static func startsInOwnWindow(_ point: NSPoint, rects: [NSRect]) -> Bool {
         rects.contains { $0.insetBy(dx: -2, dy: -2).contains(point) }
-    }
-
-    static func countsAsContent(pasteboardHasFile: Bool, startedOnDock: Bool, travel: CGFloat) -> Bool {
-        pasteboardHasFile || (startedOnDock && travel >= 20)
     }
 
     static func isDockWindow(at point: NSPoint) -> Bool {
