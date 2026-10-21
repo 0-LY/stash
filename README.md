@@ -51,6 +51,15 @@ go find where they need to go, then drag them out again — all at once or one b
 1. [Download Stash.dmg](https://github.com/0-LY/stash/releases/latest/download/Stash.dmg) and open it.
 2. Drag **Stash** onto the **Applications** folder in the window that opens.
 3. Open Stash from Applications and use **Open Anyway** as above.
+4. **First launch:** a short setup shows how to open a shelf (shake while dragging, or the hotkey) and lets you pick
+   your hotkey and shake sensitivity — with a little confetti at the end.
+   Run it again any time from the menu: **Set Up Stash…**
+
+<p align="center">
+  <img src="docs/screenshots/setup-welcome.png" width="220" alt="Setup: welcome">
+  <img src="docs/screenshots/setup-how.png" width="220" alt="Setup: how it works">
+  <img src="docs/screenshots/setup-prefs.png" width="220" alt="Setup: hotkey and sensitivity">
+</p>
 
 Stash needs no special permissions. Requirements: macOS 26 or later on Apple silicon.
 

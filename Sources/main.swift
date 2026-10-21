@@ -50,12 +50,15 @@ func trayTemplate(size: CGFloat = 18) -> NSImage {
 final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let shelves = ShelfManager()
     private let settings = SettingsWindow()
+    private let setup = SetupWindow()
+    private var fresh = false
     private let shake = DragShakeMonitor()
     private var statusItem: NSStatusItem?
     private var launchedAtLogin = false
     private var gotFiles = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        fresh = !FileManager.default.fileExists(atPath: Config.fileURL.path)
         launchedAtLogin = Self.isLoginLaunch()
         let me = ProcessInfo.processInfo.processIdentifier
         let others = SingleInstance.others(bundleId: Identity.bundleId, own: me)
@@ -105,7 +108,12 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self, !self.gotFiles, !self.launchedAtLogin, !args.contains("--background"),
                   !args.contains("--new-shelf") else { return }
-            self.settings.show()
+            if StashSetup.shouldOfferSetup(fresh: self.fresh, background: false, gotFiles: self.gotFiles) {
+                self.setup.onFinish = { [weak self] in self?.apply() }
+                self.setup.show()
+            } else {
+                self.settings.show()
+            }
         }
     }
 
@@ -168,6 +176,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Set Up \(Identity.appName)…", action: #selector(openSetup), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkUpdates), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(Identity.appName)", action: #selector(quit), keyEquivalent: "q").target = self
@@ -176,6 +185,10 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func newShelf(_ sender: Any? = nil) { shelves.newShelf() }
     @objc private func closeAllShelves(_ sender: Any? = nil) { shelves.closeAll() }
     @objc private func openSettings(_ sender: Any? = nil) { settings.show() }
+    @objc private func openSetup(_ sender: Any? = nil) {
+        setup.onFinish = { [weak self] in self?.apply() }
+        setup.show()
+    }
     @objc private func checkUpdates(_ sender: Any? = nil) { Updates.shared.checkNow() }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {

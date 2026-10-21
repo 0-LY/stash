@@ -144,6 +144,7 @@ enum MainMenu {
         appMenu.addItem(withTitle: "About \(name)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         add(appMenu, "Settings…", "openSettings", ",", target)
+        add(appMenu, "Set Up \(name)…", "openSetup", "", target)
         add(appMenu, "Check for Updates…", "checkUpdates", "", target)
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide \(name)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
