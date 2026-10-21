@@ -58,12 +58,20 @@ struct UpdatesSection: View {
 
     var body: some View {
         Section {
-            Toggle("Check for updates automatically", isOn: $updates.automaticChecks)
-            Toggle("Download and install automatically", isOn: $updates.automaticDownloads)
-                .disabled(!updates.automaticChecks)
-            Toggle(isOn: $updates.beta) {
-                Text("Get beta updates")
-                Text("Try new features early. Betas may be less stable.")
+            Toggle("Check for updates automatically", isOn: Binding(
+                get: { updates.automaticChecks },
+                set: { v in withAnimation(.easeInOut(duration: 0.25)) { updates.automaticChecks = v } }))
+                .probe("updates.check")
+            if updates.automaticChecks {
+                Toggle("Download and install automatically", isOn: $updates.automaticDownloads)
+                    .probe("updates.download")
+                    .transition(.opacity)
+                Toggle(isOn: $updates.beta) {
+                    Text("Get beta updates")
+                    Text("Try new features early. Betas may be less stable.")
+                }
+                .probe("updates.beta")
+                .transition(.opacity)
             }
             LabeledContent("Updates") {
                 Button("Check Now") { updates.checkNow() }

@@ -1,7 +1,7 @@
 import Foundation
 
 struct Config: Codable, Equatable {
-    var hotkey = "ctrl-opt-d"
+    var hotkey = defaultHotkey
     var shake = true
     var sensitivity: Sensitivity = .medium
     var autoClose = true
@@ -16,7 +16,7 @@ struct Config: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
-        hotkey = (try? c.decodeIfPresent(String.self, forKey: .hotkey)) ?? d.hotkey
+        hotkey = normalizedHotkey((try? c.decodeIfPresent(String.self, forKey: .hotkey)) ?? d.hotkey)
         shake = (try? c.decodeIfPresent(Bool.self, forKey: .shake)) ?? d.shake
         sensitivity = (try? c.decodeIfPresent(Sensitivity.self, forKey: .sensitivity)) ?? d.sensitivity
         autoClose = (try? c.decodeIfPresent(Bool.self, forKey: .autoClose)) ?? d.autoClose

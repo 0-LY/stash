@@ -158,12 +158,12 @@ struct SetupView: View {
             Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Hotkey").font(.headline)
-                Picker("", selection: $m.cfg.hotkey) {
-                    ForEach(hotkeys) { Text($0.name).tag($0.id) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.large)
+                ShortcutRecorder(shortcut: Binding(get: { hotkeyShortcut(m.cfg.hotkey) },
+                                                   set: { m.cfg.hotkey = $0?.storageID ?? "off" }),
+                                 defaultShortcut: hotkeyShortcut(defaultHotkey),
+                                 conflicts: SiblingShortcuts.read(excluding: Identity.configDirName))
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Opens an empty shelf at the pointer.").font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 8) {

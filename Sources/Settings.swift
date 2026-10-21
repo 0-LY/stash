@@ -8,6 +8,16 @@ final class SettingsModel: ObservableObject {
     @Published var cfg = Config.load()
     var onChange: () -> Void = {}
     var runSetup: () -> Void = {}
+
+    var hotkeyBinding: Binding<RecordedShortcut?> {
+        Binding(get: { hotkeyShortcut(self.cfg.hotkey) },
+                set: { self.cfg.hotkey = $0?.storageID ?? "off" })
+    }
+
+    var shakeBinding: Binding<Bool> {
+        Binding(get: { self.cfg.shake },
+                set: { v in withAnimation(.easeInOut(duration: 0.25)) { self.cfg.shake = v } })
+    }
     private var saver: AnyCancellable?
 
     init() {
@@ -378,20 +388,28 @@ struct SettingsView: View {
                 }
             }
             Section {
-                Picker("Hotkey", selection: $m.cfg.hotkey) {
-                    ForEach(hotkeys) { Text($0.name).tag($0.id) }
+                LabeledContent("Hotkey") {
+                    ShortcutRecorder(shortcut: m.hotkeyBinding, defaultShortcut: hotkeyShortcut(defaultHotkey),
+                                     conflicts: SiblingShortcuts.read(excluding: Identity.configDirName))
+                        .controlSize(.mini)
                 }
                 .help("Opens an empty shelf at the pointer.")
-                Toggle("Shake to open", isOn: $m.cfg.shake)
+                .probe("shelf.hotkey")
+                Toggle("Shake to open", isOn: m.shakeBinding)
                     .help("Shake the pointer while dragging files.")
-                Picker("Shake sensitivity", selection: $m.cfg.sensitivity) {
-                    ForEach(Sensitivity.allCases) { Text($0.name).tag($0) }
+                    .probe("shelf.shake")
+                if m.cfg.shake {
+                    Picker("Shake sensitivity", selection: $m.cfg.sensitivity) {
+                        ForEach(Sensitivity.allCases) { Text($0.name).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .probe("shelf.sensitivity")
+                    .transition(.opacity)
+                    Toggle("Keep empty shelves open", isOn: $m.cfg.keepEmpty)
+                        .help("Off: a shelf opened by shaking closes again if you don't drop anything on it.")
+                        .probe("shelf.keepEmpty")
+                        .transition(.opacity)
                 }
-                .pickerStyle(.segmented)
-                .disabled(!m.cfg.shake)
-                Toggle("Keep empty shelves open", isOn: $m.cfg.keepEmpty)
-                    .help("Off: a shelf opened by shaking closes again if you don't drop anything on it.")
-                    .disabled(!m.cfg.shake)
                 Toggle("Close when emptied", isOn: $m.cfg.autoClose)
                     .help("Close the shelf once every file has been dragged out.")
                 Toggle("Open shelves expanded", isOn: $m.cfg.openExpanded)
