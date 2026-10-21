@@ -7,6 +7,7 @@ import SwiftUI
 final class SettingsModel: ObservableObject {
     @Published var cfg = Config.load()
     var onChange: () -> Void = {}
+    var runSetup: () -> Void = {}
     private var saver: AnyCancellable?
 
     init() {
@@ -414,6 +415,10 @@ struct SettingsView: View {
                 Toggle("Open at login", isOn: $m.cfg.launchAtLogin)
             }
             Section {
+                LabeledContent("First-launch setup") {
+                    Button("Run Setup Again") { m.runSetup() }
+                        .help("Open first-launch setup. Your current settings are kept.")
+                }
                 LabeledContent("Quit \(Identity.appName)") {
                     Button("Quit") { NSApp.terminate(nil) }
                 }

@@ -89,6 +89,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ShelfModel.cleanLeftovers()
         Updates.shared.start()
         settings.model.onChange = { [weak self] in self?.apply() }
+        settings.model.runSetup = { [weak self] in self?.openSetup() }
         shelves.autoClose = { Config.current.autoClose }
         shelves.startExpanded = { Config.current.openExpanded }
         shelves.startLocked = { Config.current.startLocked }
@@ -109,7 +110,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self, !self.gotFiles, !self.launchedAtLogin, !args.contains("--background"),
                   !args.contains("--new-shelf") else { return }
             if StashSetup.shouldOfferSetup(fresh: self.fresh, background: false, gotFiles: self.gotFiles) {
-                self.setup.onFinish = { [weak self] in self?.apply() }
+                self.setup.onFinish = { [weak self] in self?.setupFinished() }
                 self.setup.show()
             } else {
                 self.settings.show()
@@ -186,8 +187,14 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func closeAllShelves(_ sender: Any? = nil) { shelves.closeAll() }
     @objc private func openSettings(_ sender: Any? = nil) { settings.show() }
     @objc private func openSetup(_ sender: Any? = nil) {
-        setup.onFinish = { [weak self] in self?.apply() }
+        setup.onFinish = { [weak self] in self?.setupFinished() }
         setup.show()
+    }
+
+    private func setupFinished() {
+        apply()
+        let fresh = Config.load()
+        if settings.model.cfg != fresh { settings.model.cfg = fresh }
     }
     @objc private func checkUpdates(_ sender: Any? = nil) { Updates.shared.checkNow() }
 

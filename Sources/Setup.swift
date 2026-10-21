@@ -2,6 +2,15 @@ import AppKit
 import SwiftUI
 
 enum StashSetup {
+    static func merge(changes: Config, since start: Config, into current: Config) -> Config {
+        var out = current
+        if changes.hotkey != start.hotkey { out.hotkey = changes.hotkey }
+        if changes.shake != start.shake { out.shake = changes.shake }
+        if changes.sensitivity != start.sensitivity { out.sensitivity = changes.sensitivity }
+        if changes.keepEmpty != start.keepEmpty { out.keepEmpty = changes.keepEmpty }
+        return out
+    }
+
     static func shouldOfferSetup(fresh: Bool, background: Bool, gotFiles: Bool) -> Bool {
         fresh && !background && !gotFiles
     }
@@ -18,13 +27,16 @@ final class SetupModel: ObservableObject {
     @Published var frames = SetupFrames()
     let preview = ShelfPreviewDriver()
     var save: (Config) -> Void = { Config.save($0) }
+    var load: () -> Config = { Config.load() }
     var onFinish: () -> Void = {}
+    private var start = Config()
 
     static let count = Step.allCases.count
 
     var current: Step { Step(rawValue: step) ?? .welcome }
 
     func reset(_ start: Config) {
+        self.start = start
         cfg = start
         step = 0
         forward = true
@@ -63,7 +75,7 @@ final class SetupModel: ObservableObject {
 
     func finish() {
         preview.stop()
-        save(cfg)
+        save(StashSetup.merge(changes: cfg, since: start, into: load()))
         celebrating = true
         onFinish()
     }

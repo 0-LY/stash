@@ -53,7 +53,9 @@ go find where they need to go, then drag them out again — all at once or one b
 3. Open Stash from Applications and use **Open Anyway** as above.
 4. **First launch:** a short setup shows how to open a shelf (shake while dragging, or the hotkey) and lets you pick
    your hotkey and shake sensitivity — with a little confetti at the end.
-   Run it again any time from the menu: **Set Up Stash…**
+   Skipped it? Everything from setup is also in Settings → Shelf (hotkey, shake, sensitivity, keep empty
+   shelves). Run it again with **Run Setup Again** in Settings → General or **Set Up Stash…** in the
+   menu — your current settings are kept.
 
 <p align="center">
   <img src="docs/screenshots/setup-welcome.png" width="220" alt="Setup: welcome">
