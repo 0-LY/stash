@@ -42,7 +42,7 @@ struct ShakeDetector {
         turns.removeAll()
     }
 
-    mutating func feed(x: CGFloat, time: TimeInterval) -> Bool {
+    mutating func feed(x: CGFloat, time: TimeInterval, canFire: Bool = true) -> Bool {
         guard let last = lastX else {
             lastX = x
             anchorX = x
@@ -65,7 +65,7 @@ struct ShakeDetector {
             anchorX = last
         }
         turns.removeAll { time - $0 > window }
-        if turns.count >= sensitivity.reversals {
+        if canFire, turns.count >= sensitivity.reversals {
             reset()
             return true
         }
@@ -91,12 +91,11 @@ final class DragShakeMonitor {
 
     private var downMonitor: Any?
     private var timer: Timer?
-    private var detector = ShakeDetector()
+    private var judge = DragJudge(sensitivity: .medium, downPoint: .zero, startedOnDock: false)
     private var dragCount = 0
     private var started = Date()
     private var downPoint = NSPoint.zero
     private var startedOnDock = false
-    private var sawDragEvents = false
     private var fired = false
     private var watcher: Timer?
     private var watcherRate: PollRate = .off
@@ -121,9 +120,8 @@ final class DragShakeMonitor {
             guard let self, Self.shouldStart(fromMonitor: true, buttonDown: true, wasDown: false, tracking: self.timer != nil) else { return }
             self.mouseDown()
         }
-        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
             guard let self else { return }
-            if event.type == .leftMouseDragged, self.timer != nil { self.sawDragEvents = true }
             self.pointerMoved()
         }
         pointerMoved()
@@ -182,11 +180,63 @@ final class DragShakeMonitor {
         pasteboardHasFile || (startedOnDock && travel >= 20)
     }
 
-    static func countsAsContent(pasteboardHasFile: Bool, startedOnDock: Bool, dockSession: Bool,
-                                hiddenDrag: Bool, travel: CGFloat) -> Bool {
-        if pasteboardHasFile { return true }
-        guard travel >= hiddenTravel else { return false }
-        return startedOnDock || (dockSession && hiddenDrag)
+    static func countsAsContent(pasteboardHasFile: Bool, startedOnDock: Bool, dockDragWindow: Bool,
+                                travel: CGFloat) -> Bool {
+        if pasteboardHasFile || dockDragWindow { return true }
+        return startedOnDock && travel >= hiddenTravel
+    }
+
+    struct DragWindow: Equatable {
+        var owner: String
+        var layer: Int
+        var pid: Int
+    }
+
+    static var draggingLayer: Int { Int(CGWindowLevelForKey(.draggingWindow)) }
+
+    static func dockDragWindowPresent(_ windows: [DragWindow], ownPid: Int, draggingLayer: Int = 500) -> Bool {
+        windows.contains { $0.layer == draggingLayer && $0.owner == "Dock" && $0.pid != ownPid }
+    }
+
+    static func dragWindows() -> [DragWindow] {
+        guard let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        let level = draggingLayer
+        return list.compactMap { w in
+            let layer = w[kCGWindowLayer as String] as? Int ?? 0
+            guard layer == level else { return nil }
+            return DragWindow(owner: w[kCGWindowOwnerName as String] as? String ?? "",
+                              layer: layer, pid: w[kCGWindowOwnerPID as String] as? Int ?? 0)
+        }
+    }
+
+    struct DragJudge {
+        var detector: ShakeDetector
+        var downPoint: CGPoint
+        var startedOnDock: Bool
+        var dockDragSeen = false
+        var lastWindowCheck: TimeInterval = -1
+        static let windowCheckInterval: TimeInterval = 0.1
+
+        init(sensitivity: Sensitivity, downPoint: CGPoint, startedOnDock: Bool) {
+            detector = ShakeDetector(sensitivity: sensitivity)
+            self.downPoint = downPoint
+            self.startedOnDock = startedOnDock
+        }
+
+        mutating func needsWindowCheck(at time: TimeInterval, pasteboardHasFile: Bool) -> Bool {
+            guard !dockDragSeen, !pasteboardHasFile else { return false }
+            guard lastWindowCheck < 0 || time - lastWindowCheck >= Self.windowCheckInterval else { return false }
+            lastWindowCheck = time
+            return true
+        }
+
+        mutating func feed(time: TimeInterval, point: CGPoint, pasteboardHasFile: Bool, dockDragWindow: Bool?) -> Bool {
+            if dockDragWindow == true { dockDragSeen = true }
+            let travel = hypot(point.x - downPoint.x, point.y - downPoint.y)
+            let content = DragShakeMonitor.countsAsContent(pasteboardHasFile: pasteboardHasFile, startedOnDock: startedOnDock,
+                                                           dockDragWindow: dockDragSeen, travel: travel)
+            return detector.feed(x: point.x, time: time, canFire: content)
+        }
     }
 
     private static var screenGeometry: [(frame: NSRect, visible: NSRect)] {
@@ -301,7 +351,6 @@ final class DragShakeMonitor {
         guard !Self.startsInOwnWindow(point, rects: ownRects()) else { return }
         dragCount = NSPasteboard(name: .drag).changeCount
         downPoint = point
-        sawDragEvents = false
         fired = false
         let strip = Self.inDockArea(point, screens: Self.screenGeometry)
         if strip { lastStrip = Date() }
@@ -315,7 +364,7 @@ final class DragShakeMonitor {
         case .skip:
             startedOnDock = false
         }
-        detector = ShakeDetector(sensitivity: sensitivity)
+        judge = DragJudge(sensitivity: sensitivity, downPoint: point, startedOnDock: startedOnDock)
         started = Date()
         timer?.invalidate()
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
@@ -338,12 +387,14 @@ final class DragShakeMonitor {
         }
         guard !fired else { return }
         let p = NSEvent.mouseLocation
-        let travel = hypot(p.x - downPoint.x, p.y - downPoint.y)
+        let time = Date().timeIntervalSince(started)
         let pbFile = isContentDrag(since: dragCount)
-        let hidden = !sawDragEvents && NSPasteboard(name: .drag).changeCount == dragCount
-        guard Self.countsAsContent(pasteboardHasFile: pbFile, startedOnDock: startedOnDock,
-                                   dockSession: dockSessionActive, hiddenDrag: hidden, travel: travel) else { return }
-        if detector.feed(x: p.x, time: Date().timeIntervalSince(started)) {
+        var dockWindow: Bool?
+        if judge.needsWindowCheck(at: time, pasteboardHasFile: pbFile) {
+            dockWindow = Self.dockDragWindowPresent(Self.dragWindows(), ownPid: Int(ProcessInfo.processInfo.processIdentifier),
+                                                    draggingLayer: Self.draggingLayer)
+        }
+        if judge.feed(time: time, point: p, pasteboardHasFile: pbFile, dockDragWindow: dockWindow) {
             fired = true
             onShake?(p)
         }

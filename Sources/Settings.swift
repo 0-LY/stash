@@ -21,7 +21,7 @@ final class SettingsModel: ObservableObject {
 }
 
 enum PreviewCue: Equatable {
-    case shake(amplitude: CGFloat)
+    case shake(amplitude: CGFloat, swings: Int)
     case hotkey(String)
 }
 
@@ -46,15 +46,23 @@ struct PreviewPlan: Equatable {
 
     static func amplitude(_ s: Sensitivity) -> CGFloat {
         switch s {
-        case .low: 16
-        case .medium: 10
-        case .high: 5
+        case .low: 40
+        case .medium: 26
+        case .high: 14
+        }
+    }
+
+    static func swings(_ s: Sensitivity) -> Int {
+        switch s {
+        case .low: 4
+        case .medium: 3
+        case .high: 2
         }
     }
 
     static func make(_ cfg: Config, reduceMotion: Bool) -> PreviewPlan {
         let cue: PreviewCue = cfg.shake
-            ? .shake(amplitude: reduceMotion ? 0 : amplitude(cfg.sensitivity))
+            ? .shake(amplitude: reduceMotion ? 0 : amplitude(cfg.sensitivity), swings: reduceMotion ? 0 : swings(cfg.sensitivity))
             : .hotkey(cfg.hotkey == "off" ? "New Shelf" : hotkeyName(cfg.hotkey))
         let drag = ShelfModel.dragOutPlan(locked: cfg.startLocked, moved: true, everything: true, autoClose: cfg.autoClose)
         let closes = drag.close
@@ -215,17 +223,17 @@ struct PreviewCueView: View {
     var body: some View {
         Group {
             switch driver.plan.cue {
-            case .shake(let amp):
+            case .shake(let amp, let swings):
                 DraggedFile()
                     .keyframeAnimator(initialValue: CGFloat(0), trigger: driver.cueToken) { content, x in
                         content.offset(x: x)
                     } keyframes: { _ in
-                        CubicKeyframe(amp, duration: 0.14)
-                        CubicKeyframe(-amp, duration: 0.18)
-                        CubicKeyframe(amp, duration: 0.18)
-                        CubicKeyframe(-amp, duration: 0.18)
-                        CubicKeyframe(amp, duration: 0.18)
-                        CubicKeyframe(0, duration: 0.14)
+                        KeyframeTrack {
+                            for i in 0..<(swings * 2) {
+                                CubicKeyframe(i % 2 == 0 ? amp : -amp, duration: i == 0 ? 0.12 : 0.16)
+                            }
+                            CubicKeyframe(0, duration: 0.12)
+                        }
                     }
             case .hotkey(let name):
                 Text(name)
