@@ -96,13 +96,34 @@ enum ShortcutRules {
         (RecordedShortcut(keyCode: UInt16(kVK_ANSI_F), modifiers: [.control, .command]), "full screen"),
     ]
 
-    static func check(_ s: RecordedShortcut, conflicts: [(RecordedShortcut, String)] = []) -> ShortcutCheck {
+    static func check(_ s: RecordedShortcut, conflicts: [(RecordedShortcut, String)] = [],
+                      macOS: [(RecordedShortcut, String)] = MacShortcuts.enabled) -> ShortcutCheck {
         let mods = s.flags
         let needsMod = !functionKeys.contains(s.keyCode)
         if needsMod && mods.intersection([.command, .option, .control]).isEmpty { return .needsModifier }
         if let hit = system.first(where: { $0.0 == s }) { return .system(hit.1) }
+        if let hit = macOS.first(where: { $0.0 == s }) { return .system(hit.1) }
         if let hit = conflicts.first(where: { $0.0 == s }) { return .conflict(hit.1) }
         return .ok
+    }
+
+    static let suggestionPool: [RecordedShortcut] = [
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_F), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_Space), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_T), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_R), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_E), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_D), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_V), modifiers: [.control, .option]),
+        RecordedShortcut(keyCode: UInt16(kVK_ANSI_F), modifiers: [.option, .command]),
+        RecordedShortcut(keyCode: UInt16(kVK_Space), modifiers: [.control, .shift]),
+        RecordedShortcut(keyCode: UInt16(kVK_F5), modifiers: []),
+        RecordedShortcut(keyCode: UInt16(kVK_F6), modifiers: []),
+    ]
+
+    static func suggestions(current: RecordedShortcut?, conflicts: [(RecordedShortcut, String)],
+                            macOS: [(RecordedShortcut, String)] = MacShortcuts.enabled, limit: Int = 6) -> [RecordedShortcut] {
+        Array(suggestionPool.filter { $0 != current && check($0, conflicts: conflicts, macOS: macOS) == .ok }.prefix(limit))
     }
 
     static func symbols(_ f: NSEvent.ModifierFlags) -> String {
@@ -161,6 +182,38 @@ enum ShortcutRules {
     }
 }
 
+enum MacShortcuts {
+    static let names: [Int: String] = [
+        7: "moving focus to the menu bar", 8: "moving focus to the Dock", 27: "switching windows",
+        28: "screenshots", 29: "screenshots", 30: "screenshots", 31: "screenshots", 184: "screenshots",
+        32: "Mission Control", 33: "app windows", 36: "showing the desktop", 52: "turning the Dock on or off",
+        60: "switching input source", 61: "switching input source", 64: "Spotlight", 65: "Finder search",
+        79: "moving between Spaces", 81: "moving between Spaces", 118: "switching desktops", 119: "switching desktops",
+        162: "Spotlight", 160: "Launchpad", 163: "Notification Center", 175: "Do Not Disturb", 190: "Quick Note",
+    ]
+
+    static func parse(_ table: [String: Any]) -> [(RecordedShortcut, String)] {
+        var out: [(RecordedShortcut, String)] = []
+        for (key, raw) in table {
+            guard let entry = raw as? [String: Any] else { continue }
+            let on = (entry["enabled"] as? Bool) ?? ((entry["enabled"] as? Int) == 1)
+            guard on, let value = entry["value"] as? [String: Any],
+                  let params = value["parameters"] as? [Int], params.count >= 3 else { continue }
+            let code = params[1]
+            guard code >= 0, code < 65535 else { continue }
+            let flags = NSEvent.ModifierFlags(rawValue: UInt(max(0, params[2])))
+            let shortcut = RecordedShortcut(keyCode: UInt16(code), modifiers: flags)
+            out.append((shortcut, names[Int(key) ?? -1] ?? "a macOS keyboard shortcut"))
+        }
+        return out
+    }
+
+    static let enabled: [(RecordedShortcut, String)] = {
+        let v = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, "com.apple.symbolichotkeys" as CFString)
+        return parse(v as? [String: Any] ?? [:])
+    }()
+}
+
 @MainActor
 final class ShortcutRecording: ObservableObject {
     @Published var active = false
@@ -214,13 +267,18 @@ struct ShortcutRecorder: View {
     @Binding var shortcut: RecordedShortcut?
     var defaultShortcut: RecordedShortcut?
     var conflicts: [(RecordedShortcut, String)] = []
+    var problem: String?
+    var showSuggestions = true
     @StateObject private var recording: ShortcutRecording
 
     init(shortcut: Binding<RecordedShortcut?>, defaultShortcut: RecordedShortcut? = nil,
-         conflicts: [(RecordedShortcut, String)] = [], recording: ShortcutRecording? = nil) {
+         conflicts: [(RecordedShortcut, String)] = [], problem: String? = nil, showSuggestions: Bool = true,
+         recording: ShortcutRecording? = nil) {
         _shortcut = shortcut
         self.defaultShortcut = defaultShortcut
         self.conflicts = conflicts
+        self.problem = problem
+        self.showSuggestions = showSuggestions
         _recording = StateObject(wrappedValue: recording ?? ShortcutRecording())
     }
 
@@ -240,6 +298,25 @@ struct ShortcutRecorder: View {
                         .foregroundStyle(recording.active ? Color(nsColor: .controlAccentColor) : .primary)
                 }
                 .help(recording.active ? "Press keys · Esc cancels · Delete clears" : "Click, then press the keys you want")
+                if showSuggestions, !suggested.isEmpty {
+                    Menu {
+                        Section("Suggestions") {
+                            ForEach(suggested, id: \.self) { s in
+                                Button(s.display) {
+                                    recording.end()
+                                    recording.problem = nil
+                                    shortcut = s
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "list.bullet")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Suggested shortcuts that are free")
+                }
                 if let defaultShortcut, shortcut != defaultShortcut {
                     Button {
                         recording.end()
@@ -252,7 +329,10 @@ struct ShortcutRecorder: View {
                     .help("Reset to \(defaultShortcut.display)")
                 }
             }
-            if let problem = recording.problem ?? warning {
+            if let problem, !recording.active {
+                Text(problem).font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let problem = recording.problem ?? warning {
                 Text(problem).font(.caption).foregroundStyle(.orange)
             }
         }
@@ -262,6 +342,10 @@ struct ShortcutRecorder: View {
     private var label: String {
         if recording.active { return "Press keys…" }
         return shortcut?.display ?? "Click to record"
+    }
+
+    private var suggested: [RecordedShortcut] {
+        ShortcutRules.suggestions(current: shortcut, conflicts: conflicts)
     }
 
     private var warning: String? {
