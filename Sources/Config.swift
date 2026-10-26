@@ -9,7 +9,7 @@ struct Config: Codable, Equatable {
     var startLocked = false
     var keepEmpty = false
     var showMenuBarIcon = true
-    var launchAtLogin = false
+    var launchAtLogin = true
 
     init() {}
 

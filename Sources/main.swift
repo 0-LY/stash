@@ -80,7 +80,8 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
            event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem {
             return true
         }
-        return ProcessInfo.processInfo.systemUptime < 300
+        let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first?.launchDate
+        return dock.map { Date().timeIntervalSince($0) < 180 } ?? false
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
